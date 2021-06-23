@@ -24,9 +24,17 @@ from nltk.tokenize import RegexpTokenizer
 from nltk.stem import WordNetLemmatizer
 import emoji    # removes emojis
 import re   # removes links
-import en_core_web_sm
+#import en_core_web_sm
+import spacy
 import string
+import nltk
+nltk.download('vader_lexicon')
+nltk.download('wordnet')
 
+import os
+import discord
+from dotenv import load_dotenv
+from discord.ext import tasks
 
 def data_extractor(reddit):
     '''extracts all the data from reddit
@@ -143,16 +151,18 @@ def print_helper(tickers, picks, c_analyzed, posts, subs, titles, time, start_ti
     print("Posts analyzed saved in titles")
     #for i in titles: print(i)  # prints the title of the posts analyzed
     
+    mostMentioned = f"\n{picks} most mentioned tickers: "
     
     print(f"\n{picks} most mentioned tickers: ")
     times = []
     top = []
     for i in top_picks:
         print(f"{i}: {symbols[i]}")
+        mostMentioned += f"\n{i}: {symbols[i]}"
         times.append(symbols[i])
         top.append(f"{i}: {symbols[i]}")
    
-    return symbols, times, top
+    return symbols, times, top, mostMentioned
     
     
 def sentiment_analysis(picks_ayz, a_comments, symbols):
@@ -186,7 +196,7 @@ def sentiment_analysis(picks_ayz, a_comments, symbols):
             lower_tokenized = [word.lower() for word in tokenized_string] # convert to lower case
             
             # remove stop words
-            nlp = en_core_web_sm.load()
+            nlp = spacy.load("en_core_web_sm")
             stopwords = nlp.Defaults.stop_words
             sw_removed = [word for word in lower_tokenized if not word in stopwords]
             
@@ -241,13 +251,16 @@ def visualization(picks_ayz, scores, picks, times, top):
                 top: list: list of top tickers
     Return:       None
     '''
-    
+    sentAnalysis = f"\nSentiment analysis of top {picks_ayz} picks:"
+
     # printing sentiment analysis 
     print(f"\nSentiment analysis of top {picks_ayz} picks:")
     df = pd.DataFrame(scores)
     df.index = ['Bearish', 'Neutral', 'Bullish', 'Total/Compound']
     df = df.T
     print(df)
+
+    sentAnalysis += "\n" + df.to_string()
     
     # Date Visualization
     # most mentioned picks    
@@ -264,6 +277,8 @@ def visualization(picks_ayz, scores, picks, times, top):
     
     #plt.show()
 
+    return sentAnalysis
+
 def main():
     '''main function
     Parameter:   None
@@ -273,15 +288,39 @@ def main():
     
     # reddit client
     reddit = praw.Reddit(user_agent="Comment Extraction",
-                         client_id="",
-                         client_secret="",
-                         username="",
-                         password="")
+                         client_id="mtT5tJl7tcZxKA",
+                         client_secret="inS7jZRRK9q-Iqko96GZYwCOqit3KA",
+                         username="wasiqrana",
+                         password="petrochem23", 
+                         check_for_async=False)
 
-    posts, c_analyzed, tickers, titles, a_comments, picks, subs, picks_ayz = data_extractor(reddit)
-    symbols, times, top = print_helper(tickers, picks, c_analyzed, posts, subs, titles, time, start_time)
-    scores = sentiment_analysis(picks_ayz, a_comments, symbols)
-    visualization(picks_ayz, scores, picks, times, top)
+    load_dotenv()
+    TOKEN = os.getenv('DISCORD_TOKEN')
+    GUILD = os.getenv('DISCORD_GUILD')
+
+    client = discord.Client()
+
+    @client.event
+    async def on_ready():
+        print(f'{client.user} has connected to Discord!')
+        change_status.start()
+
+    #@client.event
+    @tasks.loop(minutes=1)
+    async def change_status():
+        print("1 hour up")
+        channel = client.get_channel(855709777489428480)
+        posts, c_analyzed, tickers, titles, a_comments, picks, subs, picks_ayz = data_extractor(reddit)
+        symbols, times, top, mostMentioned = print_helper(tickers, picks, c_analyzed, posts, subs, titles, time, start_time)
+        scores = sentiment_analysis(picks_ayz, a_comments, symbols)
+        sentAnalysis = visualization(picks_ayz, scores, picks, times, top)
+
+        # Discord Bot
+        await channel.send(mostMentioned + "\n\n" + sentAnalysis)
+    
+
+    client.run(TOKEN)
+    
     
 if __name__ == '__main__':
     main()
