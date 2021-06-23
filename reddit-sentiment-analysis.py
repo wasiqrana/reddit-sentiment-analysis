@@ -306,7 +306,7 @@ def main():
         change_status.start()
 
     #@client.event
-    @tasks.loop(minutes=1)
+    @tasks.loop(minutes=60)
     async def change_status():
         print("1 hour up")
         channel = client.get_channel(855709777489428480)
